@@ -2,7 +2,7 @@
 
 AuthPool is an easy-to-use Node.js package that sets up a complete Google OAuth 2.0 server with just one function call. It handles user authentication, session management, token generation (JWT), and exposes protected routes — all ready to integrate into your app.
 
-## 🚀 Features
+## Features
 
 - Plug-and-play Google OAuth server
 - Generates secure JWT tokens
@@ -11,7 +11,7 @@ AuthPool is an easy-to-use Node.js package that sets up a complete Google OAuth 
 - Works great with Postman and frontend apps
 - Session management with `express-session`
 
-## 📦 Installation
+## Installation
 
 ```bash
 npm install authpool
@@ -25,7 +25,7 @@ yarn add authpool
 
 ---
 
-## 🔧 Setup & Usage
+## Setup & Usage
 
 In your server file (e.g. `auth.js`):
 
@@ -47,7 +47,7 @@ startAuthServer({
 
 ---
 
-## 🌐 API Routes
+## API Routes
 
 ### 1. Start Google Auth
 ```
@@ -98,7 +98,7 @@ Returns:
 
 ---
 
-## 🧪 How to Test in Postman
+## How to Test in Postman
 
 1. Open Postman.
 2. Visit: `http://localhost:5000/auth/google` — login with Google.
@@ -109,7 +109,7 @@ Returns:
 
 ---
 
-## 🌍 How to Use in Your Website
+## How to Use in Your Website
 
 After receiving the token on frontend:
 ```js
@@ -124,7 +124,7 @@ fetch('http://localhost:5000/auth/protected', {
 
 ---
 
-## 📁 Folder Structure
+## Folder Structure
 
 ```
 📦 authpool/
@@ -140,7 +140,7 @@ fetch('http://localhost:5000/auth/protected', {
 
 ---
 
-## 🛡️ Environment Variables
+## Environment Variables
 
 Create a `.env` file in your project root:
 
@@ -153,24 +153,26 @@ JWT_SECRET=<your-jwt-secret>
 SESSION_SECRET=<your-session-secret>
 ```
 
-## 🔗 NPM Package
+## GitHub
 
-📦 **Coming Soon** — Will be available at:
-
-[https://www.npmjs.com/package/authpool](https://www.npmjs.com/package/authpool)
-
-_()_
+[https://github.com/ashbhati26/authpool](https://github.com/ashbhati26/authpool)
 
 ---
 
-## 👨‍💻 Author
+## NPM Package
+
+[https://www.npmjs.com/package/authpool](https://www.npmjs.com/package/authpool)
+
+---
+
+## Author
 
 **Ashish**  
 Open-source enthusiast • Web & Mobile Developer
 
 ---
 
-## 📝 License
+## License
 
 MIT © 2025  
 Feel free to fork, use, and contribute!
