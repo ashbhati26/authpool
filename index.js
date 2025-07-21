@@ -1,10 +1,11 @@
-const express = require('express');
-const session = require('express-session');
-const passport = require('passport');
-const mongoose = require('mongoose');
-const initPassport = require('./src/config/passport');
-const createAuthRoutes = require('./src/routes/auth');
-require('dotenv').config();
+const express = require("express");
+const session = require("express-session");
+const passport = require("passport");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const initPassport = require("./src/config/passport");
+const createAuthRoutes = require("./src/routes/auth");
+require("dotenv").config();
 
 let app;
 
@@ -16,30 +17,56 @@ const startAuthServer = async ({
   jwtSecret,
   sessionSecret,
   port = 5000,
+  corsOptions = {},
 }) => {
   app = express();
 
-  await mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('MongoDB connected'))
-  .catch((err) => console.error(err));
+  // MongoDB Connection
+  await mongoose
+    .connect(mongoURI)
+    .then(() => console.log("MongoDB connected"))
+    .catch((err) => console.error(err));
 
-
+  // Passport Initialization
   initPassport(googleClientID, googleClientSecret, googleCallbackURL);
 
-  app.use(session({
-    secret: sessionSecret,
-    resave: false,
-    saveUninitialized: true
-  }));
+  // CORS Setup
+  app.use(
+    cors({
+      origin: corsOptions.origin || "*",
+      methods: corsOptions.methods || ["GET", "POST"],
+      allowedHeaders: corsOptions.allowedHeaders || [
+        "Content-Type",
+        "Authorization",
+      ],
+      credentials: corsOptions.credentials ?? true,
+    })
+  );
+
+  // Express Session
+  app.use(
+    session({
+      secret: sessionSecret,
+      resave: false,
+      saveUninitialized: true,
+    })
+  );
 
   app.use(passport.initialize());
   app.use(passport.session());
 
-  app.use('/auth', createAuthRoutes(jwtSecret));
+  // Routes
+  app.use("/auth", createAuthRoutes(jwtSecret));
 
-  app.get('/', (req, res) => res.send('Google Auth Package Running'));
+  // Root Test
+  app.get("/", (req, res) =>
+    res.send("Google Auth Package Running with CORS Support")
+  );
 
-  app.listen(port, () => console.log(`Auth server running at http://localhost:${port}`));
+  // Start Server
+  app.listen(port, () =>
+    console.log(`Auth server running at http://localhost:${port}`)
+  );
 };
 
 module.exports = { startAuthServer };

@@ -1,5 +1,5 @@
 node_modules
 .gitignore
-test.js
+tests
 .env
 .git
