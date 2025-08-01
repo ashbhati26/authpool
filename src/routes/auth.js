@@ -2,6 +2,7 @@ const express = require("express");
 const passport = require("passport");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const verifyJWT = require("../middleware/verifyJWT");
 
 const createAuthRoutes = (JWT_SECRET) => {
   const router = express.Router();
@@ -38,27 +39,8 @@ const createAuthRoutes = (JWT_SECRET) => {
   });
 
   // JWT protected route
-  router.get("/protected", async (req, res) => {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "No token provided" });
-    }
-
-    const token = authHeader.split(" ")[1];
-
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET);
-
-      const user = await User.findById(decoded.id);
-      if (!user || user.tokenVersion !== decoded.tokenVersion) {
-        return res.status(401).json({ error: "Token has been invalidated" });
-      }
-
-      res.json({ message: "Token is valid", user: decoded });
-    } catch (err) {
-      res.status(401).json({ error: "Token is invalid" });
-    }
+  router.get("/protected", verifyJWT(JWT_SECRET), (req, res) => {
+    res.json({ message: "Token is valid", user: req.user });
   });
 
   // Logout single session
