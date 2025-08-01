@@ -41,7 +41,20 @@ const createAuthRoutes = (JWT_SECRET) => {
     }
   });
 
+    router.get('/logout', (req, res) => {
+    req.logout(() => {
+      req.session.destroy((err) => {
+        if (err) {
+          return res.status(500).json({ error: 'Logout failed' });
+        }
+        res.clearCookie('connect.sid');
+        res.json({ message: 'Logged out successfully' });
+      });
+    });
+  });
+
+
   return router;
 };
 
-module.exports = createAuthRoutes; // ✅ Proper export
+module.exports = createAuthRoutes;

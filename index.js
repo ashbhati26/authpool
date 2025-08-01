@@ -25,7 +25,10 @@ const startAuthServer = async ({
   await mongoose
     .connect(mongoURI)
     .then(() => console.log("MongoDB connected"))
-    .catch((err) => console.error(err));
+    .catch((err) => {
+      console.error('MongoDB connection failed:', err);
+      process.exit(1);
+    });
 
   // Passport Initialization
   initPassport(googleClientID, googleClientSecret, googleCallbackURL);
