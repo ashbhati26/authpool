@@ -1,9 +1,9 @@
 const express = require("express");
 const passport = require("passport");
 const jwt = require("jsonwebtoken");
-const crypto = require("crypto");
 const User = require("../models/User");
 const verifyJWT = require("../middleware/verifyJWT");
+const { authorizeRoles } = require("../middleware/authorizeRoles");
 const {
   signAccess,
   signRefresh,
@@ -24,62 +24,89 @@ const createAuthRoutes = (JWT_SECRET, { limiters, csrfHeader = "x-csrf-token" } 
   const authLimiter = limiters?.authLimiter;
   const authSlowdown = limiters?.authSlowdown;
 
-  // CSRF token fetch (JSON helper) — header also set by sendTokenHeader middleware on GET
+  // CSRF helper
   router.get("/csrf", (req, res) => {
     const token = typeof req.csrfToken === "function" ? req.csrfToken() : null;
     if (token) res.set(csrfHeader, token);
     res.json({ csrfToken: token, header: csrfHeader });
   });
 
-  // Google OAuth login
-  router.get(
-    "/google",
-    authLimiter,
-    authSlowdown,
+  // ===== GOOGLE =====
+  router.get("/google", authLimiter, authSlowdown,
     passport.authenticate("google", { scope: ["profile", "email"] })
   );
 
-  // Google OAuth callback -> issue access + refresh, persist refresh, set cookie
-  router.get(
-    "/google/callback",
-    authLimiter,
-    authSlowdown,
+  router.get("/google/callback", authLimiter, authSlowdown,
     passport.authenticate("google", { failureRedirect: "/auth/failure" }),
-    async (req, res) => {
-      const user = req.user;
-
-      // access token (short)
-      const accessToken = signAccess(
-        { id: user._id, name: user.name, profilePic: user.profilePic, tokenVersion: user.tokenVersion },
-        JWT_SECRET
-      );
-
-      // refresh token (long) + persistence
-      const jti = newJti();
-      const refreshToken = signRefresh({ id: user._id, tokenVersion: user.tokenVersion }, JWT_SECRET, jti);
-      const exp = decodeExp(refreshToken);
-      await persistRefresh(user._id, refreshToken, jti, exp);
-
-      // Set httpOnly cookie for refresh; also return in body for Postman testing
-      res.cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        sameSite: "strict",
-        secure: process.env.NODE_ENV === "production",
-        path: "/auth",
-      });
-
-      res.json({ accessToken, refreshToken }); // include refreshToken for easier testing
-    }
+    async (req, res) => issueTokensForUser(req, res, JWT_SECRET)
   );
 
-  // Auth failure fallback
-  router.get("/failure", (req, res) => {
-    res.status(401).json({ error: "Authentication Failed" });
-  });
+  // ===== (if you enabled them) GITHUB / FACEBOOK =====
+  router.get("/github", authLimiter, authSlowdown,
+    passport.authenticate("github", { scope: ["user:email"] })
+  );
+  router.get("/github/callback", authLimiter, authSlowdown,
+    passport.authenticate("github", { failureRedirect: "/auth/failure" }),
+    async (req, res) => issueTokensForUser(req, res, JWT_SECRET)
+  );
 
-  // JWT protected route
+  router.get("/facebook", authLimiter, authSlowdown,
+    passport.authenticate("facebook", { scope: ["email"] })
+  );
+  router.get("/facebook/callback", authLimiter, authSlowdown,
+    passport.authenticate("facebook", { failureRedirect: "/auth/failure" }),
+    async (req, res) => issueTokensForUser(req, res, JWT_SECRET)
+  );
+
+  // Common token issuing path used by all provider callbacks
+  async function issueTokensForUser(req, res, secret) {
+    const user = await User.findById(req.user._id).lean();
+    const roles = Array.isArray(user?.roles) && user.roles.length ? user.roles : ["user"];
+
+    const accessToken = signAccess(
+      {
+        id: user._id,
+        name: user.name,
+        profilePic: user.profilePic,
+        tokenVersion: user.tokenVersion,
+        roles,
+      },
+      secret
+    );
+
+    const jti = newJti();
+    const refreshToken = signRefresh(
+      {
+        id: user._id,
+        tokenVersion: user.tokenVersion,
+        roles,
+      },
+      secret,
+      jti
+    );
+    const exp = decodeExp(refreshToken);
+    await persistRefresh(user._id, refreshToken, jti, exp);
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
+      path: "/auth",
+    });
+
+    res.json({ accessToken, refreshToken, roles });
+  }
+
+  router.get("/failure", (req, res) => res.status(401).json({ error: "Authentication Failed" }));
+
+  // JWT protected route (any authenticated user)
   router.get("/protected", authLimiter, verifyJWT(JWT_SECRET), (req, res) => {
     res.json({ message: "Token is valid", user: req.user });
+  });
+
+  // EXAMPLE: Admin-only route
+  router.get("/admin", authLimiter, verifyJWT(JWT_SECRET), authorizeRoles(["admin"]), (req, res) => {
+    res.json({ message: "Welcome, admin!", user: req.user });
   });
 
   // Refresh endpoint -> rotate refresh token + return new access token
@@ -90,7 +117,7 @@ const createAuthRoutes = (JWT_SECRET, { limiters, csrfHeader = "x-csrf-token" } 
       const token = tokenFromCookie || tokenFromBody;
       if (!token) return res.status(401).json({ error: "No refresh token provided" });
 
-      const decoded = jwt.verify(token, JWT_SECRET); // includes jti
+      const decoded = jwt.verify(token, JWT_SECRET); // includes jti and roles
       const jti = decoded.jti;
       if (!jti) return res.status(401).json({ error: "Malformed refresh token" });
 
@@ -101,12 +128,15 @@ const createAuthRoutes = (JWT_SECRET, { limiters, csrfHeader = "x-csrf-token" } 
       await revokeRefresh(jti);
       const nextJti = newJti();
 
+      // Use roles from the refresh token (reflect changes on next login or tokenVersion bump)
+      const roles = Array.isArray(decoded.roles) && decoded.roles.length ? decoded.roles : ["user"];
+
       const accessToken = signAccess(
-        { id: decoded.id, tokenVersion: decoded.tokenVersion },
+        { id: decoded.id, tokenVersion: decoded.tokenVersion, roles },
         JWT_SECRET
       );
       const nextRefresh = signRefresh(
-        { id: decoded.id, tokenVersion: decoded.tokenVersion },
+        { id: decoded.id, tokenVersion: decoded.tokenVersion, roles },
         JWT_SECRET,
         nextJti
       );
@@ -126,7 +156,6 @@ const createAuthRoutes = (JWT_SECRET, { limiters, csrfHeader = "x-csrf-token" } 
     }
   });
 
-  // Logout single session — clear current refresh cookie if present (defensive revoke)
   router.get("/logout", authLimiter, authSlowdown, async (req, res) => {
     try {
       const cookieToken = req.cookies?.refreshToken;
@@ -137,9 +166,7 @@ const createAuthRoutes = (JWT_SECRET, { limiters, csrfHeader = "x-csrf-token" } 
     } catch (_) {}
     req.logout(() => {
       req.session.destroy((err) => {
-        if (err) {
-          return res.status(500).json({ error: "Logout failed" });
-        }
+        if (err) return res.status(500).json({ error: "Logout failed" });
         res.clearCookie("connect.sid");
         res.clearCookie("refreshToken", { path: "/auth" });
         res.json({ message: "Logged out successfully" });
@@ -147,21 +174,17 @@ const createAuthRoutes = (JWT_SECRET, { limiters, csrfHeader = "x-csrf-token" } 
     });
   });
 
-  // Logout from all devices — bump tokenVersion and revoke all refresh tokens
   router.post("/logout-all", authLimiter, authSlowdown, async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({ error: "No token provided" });
     }
-
     const token = authHeader.split(" ")[1];
-
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
       const user = await User.findById(decoded.id);
       if (!user) return res.status(404).json({ error: "User not found" });
 
-      // Invalidate all issued access tokens (by bumping version) & revoke refresh tokens in DB
       user.tokenVersion += 1;
       await user.save();
       await revokeAllForUser(user._id);
