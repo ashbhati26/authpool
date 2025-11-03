@@ -6,12 +6,19 @@ const verifyJWT = require("../middleware/verifyJWT");
 
 /**
  * @param {string} JWT_SECRET
- * @param {{ limiters?: { authLimiter: Function, authSlowdown: Function } }} opts
+ * @param {{ limiters?: { authLimiter: Function, authSlowdown: Function }, csrfHeader?: string }} opts
  */
-const createAuthRoutes = (JWT_SECRET, { limiters } = {}) => {
+const createAuthRoutes = (JWT_SECRET, { limiters, csrfHeader = "x-csrf-token" } = {}) => {
   const router = express.Router();
   const authLimiter = limiters?.authLimiter;
   const authSlowdown = limiters?.authSlowdown;
+
+  // CSRF token fetch (JSON helper) — header also set by sendTokenHeader middleware on GET
+  router.get("/csrf", (req, res) => {
+    const token = typeof req.csrfToken === "function" ? req.csrfToken() : null;
+    if (token) res.set(csrfHeader, token);
+    res.json({ csrfToken: token, header: csrfHeader });
+  });
 
   // Google OAuth login
   router.get(
@@ -66,7 +73,7 @@ const createAuthRoutes = (JWT_SECRET, { limiters } = {}) => {
     });
   });
 
-  // Logout from all devices
+  // Logout from all devices (CSRF-protected when middleware enabled)
   router.post("/logout-all", authLimiter, authSlowdown, async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {

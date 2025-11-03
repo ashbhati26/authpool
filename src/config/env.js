@@ -36,11 +36,18 @@ function resolveConfig(opts = {}) {
     console.error("\nTip: create a .env from .env.example and fill the values.");
     process.exit(1);
   }
-    // Default rate-limit thresholds
+
+  // Default rate-limit thresholds (overridable via startAuthServer({ rateLimit }))
   cfg.RATE_LIMIT = {
     global:   { windowMs: 15 * 60 * 1000, max: 300 },
     auth:     { windowMs: 60 * 1000, max: 5 },
     slowdown: { windowMs: 60 * 1000, delayAfter: 3, delayMs: 250 },
+  };
+
+  // CSRF defaults (session mode). Overridable via startAuthServer({ csrf })
+  cfg.CSRF = {
+    enabled: true,
+    headerName: "x-csrf-token",
   };
 
   return cfg;
@@ -63,7 +70,9 @@ function normalizeCorsOptions(opts) {
   return {
     origin: o.origin ?? "*",
     methods: o.methods ?? ["GET", "POST"],
-    allowedHeaders: o.allowedHeaders ?? ["Content-Type", "Authorization"],
+    allowedHeaders: Array.isArray(o.allowedHeaders)
+      ? o.allowedHeaders
+      : (o.allowedHeaders ? [o.allowedHeaders] : ["Content-Type", "Authorization"]),
     credentials: o.credentials ?? true,
   };
 }
