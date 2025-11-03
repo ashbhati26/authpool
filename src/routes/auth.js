@@ -4,18 +4,28 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const verifyJWT = require("../middleware/verifyJWT");
 
-const createAuthRoutes = (JWT_SECRET) => {
+/**
+ * @param {string} JWT_SECRET
+ * @param {{ limiters?: { authLimiter: Function, authSlowdown: Function } }} opts
+ */
+const createAuthRoutes = (JWT_SECRET, { limiters } = {}) => {
   const router = express.Router();
+  const authLimiter = limiters?.authLimiter;
+  const authSlowdown = limiters?.authSlowdown;
 
   // Google OAuth login
   router.get(
     "/google",
+    authLimiter,
+    authSlowdown,
     passport.authenticate("google", { scope: ["profile", "email"] })
   );
 
   // Google OAuth callback
   router.get(
     "/google/callback",
+    authLimiter,
+    authSlowdown,
     passport.authenticate("google", { failureRedirect: "/auth/failure" }),
     async (req, res) => {
       const user = req.user;
@@ -39,12 +49,12 @@ const createAuthRoutes = (JWT_SECRET) => {
   });
 
   // JWT protected route
-  router.get("/protected", verifyJWT(JWT_SECRET), (req, res) => {
+  router.get("/protected", authLimiter, verifyJWT(JWT_SECRET), (req, res) => {
     res.json({ message: "Token is valid", user: req.user });
   });
 
   // Logout single session
-  router.get("/logout", (req, res) => {
+  router.get("/logout", authLimiter, authSlowdown, (req, res) => {
     req.logout(() => {
       req.session.destroy((err) => {
         if (err) {
@@ -57,7 +67,7 @@ const createAuthRoutes = (JWT_SECRET) => {
   });
 
   // Logout from all devices
-  router.post("/logout-all", async (req, res) => {
+  router.post("/logout-all", authLimiter, authSlowdown, async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({ error: "No token provided" });

@@ -7,6 +7,7 @@ const cors = require("cors");
 const initPassport = require("./src/config/passport");
 const createAuthRoutes = require("./src/routes/auth");
 const { resolveConfig } = require("./src/config/env");
+const { createRateLimiters } = require("./src/security/rateLimit");
 
 let app;
 
@@ -19,6 +20,7 @@ const startAuthServer = async ({
   sessionSecret,
   port = 5000,
   corsOptions = {},
+  rateLimit = {},
 } = {}) => {
   app = express();
 
@@ -33,6 +35,14 @@ const startAuthServer = async ({
     port,
     corsOptions,
   });
+
+  // Merge user overrides for rateLimit (shallow per bucket)
+  cfg.RATE_LIMIT = {
+    global:  { ...cfg.RATE_LIMIT.global,  ...(rateLimit.global  || {}) },
+    auth:    { ...cfg.RATE_LIMIT.auth,    ...(rateLimit.auth    || {}) },
+    slowdown:{ ...cfg.RATE_LIMIT.slowdown, ...(rateLimit.slowdown || {}) },
+  };
+  const limiters = createRateLimiters(cfg.RATE_LIMIT);
 
   // 2) Connect MongoDB
   await mongoose
@@ -56,7 +66,10 @@ const startAuthServer = async ({
     })
   );
 
-  // 5) Sessions
+  // 5) Global rate limiter
+  app.use(limiters.globalLimiter);
+
+  // 6) Sessions
   app.use(
     session({
       secret: cfg.SESSION_SECRET,
@@ -68,13 +81,13 @@ const startAuthServer = async ({
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // 6) Routes
-  app.use("/auth", createAuthRoutes(cfg.JWT_SECRET));
+  // 7) Routes (inject auth-specific limiters into router)
+  app.use("/auth", createAuthRoutes(cfg.JWT_SECRET, { limiters }));
 
-  // 7) Root test
+  // 8) Root test
   app.get("/", (req, res) => res.send("Google Auth Package Running with CORS Support"));
 
-  // 8) Start server
+  // 9) Start server
   app.listen(cfg.PORT, () => console.log(`Auth server running at http://localhost:${cfg.PORT}`));
 };
 

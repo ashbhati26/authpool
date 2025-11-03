@@ -36,6 +36,12 @@ function resolveConfig(opts = {}) {
     console.error("\nTip: create a .env from .env.example and fill the values.");
     process.exit(1);
   }
+    // Default rate-limit thresholds
+  cfg.RATE_LIMIT = {
+    global:   { windowMs: 15 * 60 * 1000, max: 300 },
+    auth:     { windowMs: 60 * 1000, max: 5 },
+    slowdown: { windowMs: 60 * 1000, delayAfter: 3, delayMs: 250 },
+  };
 
   return cfg;
 }
@@ -71,7 +77,7 @@ function envChecklist() {
     "JWT_SECRET",
     "SESSION_SECRET",
     "(optional) PORT",
-    "(optional) CORS_ORIGIN / CORS options",
+    "(optional) CORS options",
   ];
 }
 
