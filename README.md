@@ -1,15 +1,24 @@
-# AuthPool  – Google OAuth Simplified
+# AuthPool — Plug-and-Play Authentication Server
 
-AuthPool is an easy-to-use Node.js package that sets up a complete Google OAuth 2.0 server with just one function call. It handles user authentication, session management, token generation (JWT), and exposes protected routes — all ready to integrate into your app.
+> **AuthPool** is a plug-and-play Node.js authentication package that provides a complete, secure, and configurable authentication system with OAuth, JWT tokens, role-based access, CSRF protection, rate limiting, and more — all out of the box.
+
+---
 
 ## Features
 
-- Plug-and-play Google OAuth server
-- Generates secure JWT tokens
-- Provides a `/protected` route to test token validity
-- MongoDB-based user storage
-- Works great with Postman and frontend apps
-- Session management with `express-session`
+* **Plug & Play Auth Server** — Start a full authentication backend in one line of code.
+* **Google OAuth Integration** — Pre-configured with Google strategy (others coming soon).
+* **JWT-based Authentication** — Secure access and refresh token management.
+* **Session Support** — Express session management for OAuth providers.
+* **Role-Based Access Control (RBAC)** — Secure routes with admin/user roles.
+* **CSRF Protection** — Built-in CSRF tokens for safe cross-origin operations.
+* **Rate Limiting & Slowdown** — Prevent brute-force and DDoS attacks.
+* **MongoDB Integration** — Built-in schema for users and refresh tokens.
+* **Custom User Transformation** — Modify or enrich OAuth user data before saving.
+* **CORS Support** — Easily integrate with any frontend.
+* **Secure Logout & Logout-All Sessions** — For full session lifecycle management.
+
+---
 
 ## Installation
 
@@ -17,7 +26,7 @@ AuthPool is an easy-to-use Node.js package that sets up a complete Google OAuth 
 npm install authpool
 ```
 
-Or if you prefer yarn:
+or
 
 ```bash
 yarn add authpool
@@ -25,154 +34,315 @@ yarn add authpool
 
 ---
 
-## Setup & Usage
+## Basic Setup Example
 
-In your server file (e.g. `auth.js`):
+Create a new file, for example `server.js`:
 
 ```js
-const { startAuthServer } = require('authpool');
+const { startAuthServer } = require("authpool");
 
 startAuthServer({
-  mongoURI: '<your-mongo-uri>',
-  googleClientID: '<your-google-client-id>',
-  googleClientSecret: '<your-google-client-secret>',
-  googleCallbackURL: 'http://localhost:5000/auth/google/callback',
-  jwtSecret: '<your-jwt-secret>',
-  sessionSecret: '<your-session-secret>',
-  port: 5000, // optional (defaults to 5000)
+  mongoURI: "mongodb://localhost:27017/authpool",
+  googleClientID: "YOUR_GOOGLE_CLIENT_ID",
+  googleClientSecret: "YOUR_GOOGLE_CLIENT_SECRET",
+  googleCallbackURL: "http://localhost:5000/auth/google/callback",
+  jwtSecret: "YOUR_JWT_SECRET",
+  sessionSecret: "YOUR_SESSION_SECRET",
+  port: 5000,
+  corsOptions: {
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
 });
 ```
 
-> Replace all `<>` with your actual credentials.
+Then run:
+
+```bash
+node server.js
+```
+
+Output:
+
+```
+MongoDB connected
+Auth server running at http://localhost:5000
+```
 
 ---
 
-## API Routes
+## Available Routes
 
-### 1. Start Google Auth
-```
-GET /auth/google
-```
-
-Redirects the user to Google for login.
+| Method | Route                   | Description                     |
+| ------ | ----------------------- | ------------------------------- |
+| `GET`  | `/auth/google`          | Start Google OAuth login        |
+| `GET`  | `/auth/google/callback` | OAuth callback handler          |
+| `GET`  | `/auth/protected`       | Protected route (JWT required)  |
+| `GET`  | `/auth/admin`           | Admin-only route (RBAC example) |
+| `POST` | `/auth/refresh`         | Refresh access token            |
+| `GET`  | `/auth/logout`          | Logout current session          |
+| `POST` | `/auth/logout-all`      | Logout from all sessions        |
+| `GET`  | `/auth/csrf`            | Get CSRF token for frontend     |
 
 ---
 
-### 2. Callback Handler
-```
-GET /auth/google/callback
+## Example: Custom User Transformation
+
+You can customize user data before it’s stored in MongoDB:
+
+```js
+startAuthServer({
+  // ... other configs
+  transformUser: (profile, provider) => {
+    if (provider === "google") {
+      return {
+        googleId: profile.id,
+        email: profile.emails[0].value,
+        name: profile.displayName,
+        profilePic: profile.photos[0].value,
+        roles: ["user"],
+      };
+    }
+  },
+});
 ```
 
-After login, returns a response like:
+---
 
-```json
-{
-  "token": "<your-jwt-token>"
+## Token Management
+
+AuthPool issues two types of tokens after successful login:
+
+| Token             | Description                                                       | Expiry     |
+| ----------------- | ----------------------------------------------------------------- | ---------- |
+| **Access Token**  | Short-lived (used for API requests)                               | 15 minutes |
+| **Refresh Token** | Stored as an HTTP-only cookie, used to generate new access tokens | 30 days    |
+
+To refresh a token:
+
+```bash
+POST /auth/refresh
+Body: { "refreshToken": "..." }
+```
+
+To logout all devices (invalidate all tokens):
+
+```bash
+POST /auth/logout-all
+Authorization: Bearer <access_token>
+```
+
+---
+
+## Role-Based Access Control (RBAC)
+
+You can restrict routes to specific roles (like `admin`, `user`, etc.):
+
+```js
+router.get("/admin", verifyJWT(JWT_SECRET), authorizeRoles(["admin"]), (req, res) => {
+  res.json({ message: "Welcome, admin!" });
+});
+```
+
+* Each user has a `roles` array stored in the database.
+* The middleware checks if the logged-in user has the required role.
+
+---
+
+## Security Layers
+
+| Feature                    | Purpose                                               |
+| -------------------------- | ----------------------------------------------------- |
+| **CSRF Protection**        | Prevents cross-site request forgery attacks           |
+| **Rate Limiting**          | Blocks repeated failed attempts                       |
+| **Slowdown Middleware**    | Adds artificial delay after multiple failed requests  |
+| **Brute-Force Lockout**    | Temporarily locks users after repeated login failures |
+| **JWT Verification**       | Ensures tokens are valid and untampered               |
+| **Role Authorization**     | Restricts sensitive routes                            |
+| **Refresh Token Rotation** | Prevents token replay attacks                         |
+
+---
+
+## Environment Variables (.env)
+
+You can use a `.env` file or pass variables directly in code.
+
+```
+MONGO_URI=mongodb://localhost:27017/authpool
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GOOGLE_CALLBACK_URL=http://localhost:5000/auth/google/callback
+JWT_SECRET=your_jwt_secret
+SESSION_SECRET=your_session_secret
+PORT=5000
+```
+
+---
+
+## Advanced Configuration
+
+### CORS Options
+
+```js
+corsOptions: {
+  origin: "http://localhost:3000",
+  methods: ["GET", "POST"],
+  credentials: true,
+}
+```
+
+### Rate Limiting
+
+```js
+rateLimit: {
+  global: { windowMs: 15 * 60 * 1000, max: 300 },
+  auth: { windowMs: 60 * 1000, max: 5 },
+  slowdown: { windowMs: 60 * 1000, delayAfter: 3, delayMs: 250 },
+}
+```
+
+### CSRF Protection
+
+```js
+csrf: {
+  enabled: true,
+  headerName: "x-csrf-token"
 }
 ```
 
 ---
 
-### 3. Protected Route (JWT required)
-```
-GET /auth/protected
+## MongoDB Models
+
+### User Model
+
+```js
+{
+  googleId: String,
+  name: String,
+  email: String,
+  profilePic: String,
+  roles: ["user"],
+  tokenVersion: Number,
+}
 ```
 
-Use this to verify the token in Postman or frontend. Add the token in `Authorization` header:
+### Refresh Token Model
 
-```
-Authorization: Bearer <token>
+```js
+{
+  jti: String,
+  userId: ObjectId,
+  hashedToken: String,
+  expiresAt: Date,
+  revokedAt: Date,
+}
 ```
 
-Returns:
+---
+
+## Example Integration (Frontend)
+
+You can easily use AuthPool with React, Next.js, or any frontend.
+
+Example with **Next.js**:
+
+```js
+fetch("http://localhost:5000/auth/google", {
+  credentials: "include"
+});
+```
+
+Then, after login:
+
+* The backend sends access and refresh tokens.
+* The access token is stored in memory or secure storage.
+* Use `/auth/refresh` for silent renewal.
+
+---
+
+## Example Protected API Usage
+
+```js
+fetch("http://localhost:5000/auth/protected", {
+  headers: {
+    Authorization: `Bearer ${accessToken}`,
+  },
+});
+```
+
+Response:
+
 ```json
 {
   "message": "Token is valid",
   "user": {
-    "id": "...",
-    "name": "...",
-    "profilePic": "..."
+    "id": "66c7f3d...",
+    "name": "John Doe",
+    "roles": ["user"]
   }
 }
 ```
 
 ---
 
-## How to Test in Postman
-
-1. Open Postman.
-2. Visit: `http://localhost:5000/auth/google` — login with Google.
-3. Copy the returned token from `/auth/google/callback`.
-4. Test `/auth/protected`:
-   - Method: `GET`
-   - Header: `Authorization: Bearer <token>`
-
----
-
-## How to Use in Your Website
-
-After receiving the token on frontend:
-```js
-fetch('http://localhost:5000/auth/protected', {
-  headers: {
-    Authorization: `Bearer ${token}`
-  }
-})
-.then(res => res.json())
-.then(data => console.log(data));
-```
-
----
-
-## Folder Structure
+## Architecture Overview
 
 ```
-📦 authpool/
- ┣ 📂 src/
- ┃ ┣ 📂 config/
- ┃ ┃ ┗ 📜 passport.js
- ┃ ┣ 📂 models/
- ┃ ┃ ┗ 📜 User.js
- ┃ ┣ 📂 routes/
- ┃ ┃ ┗ 📜 auth.js
- ┣ 📜 index.js
+                ┌──────────────────────┐
+                │    Frontend App      │
+                │ (React / Next.js)    │
+                └─────────┬────────────┘
+                          │
+             OAuth        │
+         (Google, GitHub) │
+                          ▼
+                ┌──────────────────────┐
+                │     AuthPool Server  │
+                │  Express + Passport  │
+                ├──────────────────────┤
+                │  Rate Limiting       │
+                │  CSRF Protection     │
+                │  JWT / Refresh Flow  │
+                │  MongoDB (User + RT) │
+                └──────────────────────┘
+                          │
+                    Secure API Calls
+                          │
+                          ▼
+                ┌──────────────────────┐
+                │   Your Application   │
+                └──────────────────────┘
 ```
 
----
+## Upcoming Features
 
-## Environment Variables
-
-Create a `.env` file in your project root:
-
-```env
-MONGO_URI=<your-mongo-uri>
-GOOGLE_CLIENT_ID=<your-google-client-id>
-GOOGLE_CLIENT_SECRET=<your-google-client-secret>
-GOOGLE_CALLBACK_URL=http://localhost:5000/auth/google/callback
-JWT_SECRET=<your-jwt-secret>
-SESSION_SECRET=<your-session-secret>
-```
-
-## GitHub
-
-[https://github.com/ashbhati26/authpool](https://github.com/ashbhati26/authpool)
+| Feature                                 | Status  | Description                                           |
+| --------------------------------------- | ------- | ----------------------------------------------------- |
+| Multi-Provider OAuth (GitHub, Facebook) | 🚧 Open | Add support for more providers                        |
+| TypeScript Support                      | 🚧 Open | Rewrite in TypeScript for better typings              |
+| Multi-Database Support                  | 🚧 Open | Add support for different DBs (Postgres, MySQL, etc.) |
 
 ---
 
-## NPM Package
+## Contributing
 
-[https://www.npmjs.com/package/authpool](https://www.npmjs.com/package/authpool)
-
----
-
-## Author
-
-**Ashish**  
-Open-source enthusiast • Web & Mobile Developer
+Contributions are welcome!
+If you’d like to improve or add providers, open a PR or issue.
 
 ---
 
 ## License
 
-MIT © 2025  
-Feel free to fork, use, and contribute!
+MIT License © 2025 [Ashish Bhati](https://github.com/ashbhati26)
+
+---
+
+## Author
+
+**Ashish Bhati**
+GitHub: [ashbhati26](https://github.com/ashbhati26)
+NPM: [authpool](https://www.npmjs.com/package/authpool)
+Project Type: Research & Developer Tool
+Keywords: Authentication, OAuth, Passport, JWT, Node.js, MongoDB
