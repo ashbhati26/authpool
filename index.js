@@ -24,14 +24,13 @@ const startAuthServer = async ({
   corsOptions = {},
   rateLimit = {},
   csrf = {},
+
+  transformUser,
 } = {}) => {
   app = express();
-
-  // Body & cookie parsing
   app.use(express.json());
   app.use(cookieParser());
 
-  // 1) Resolve & validate configuration (from args or env)
   const cfg = resolveConfig({
     mongoURI,
     googleClientID,
@@ -43,83 +42,71 @@ const startAuthServer = async ({
     corsOptions,
   });
 
-  // Merge user overrides for rateLimit
+  // Rate limit + CSRF setup
   cfg.RATE_LIMIT = {
-    global: { ...cfg.RATE_LIMIT.global, ...(rateLimit.global || {}) },
-    auth: { ...cfg.RATE_LIMIT.auth, ...(rateLimit.auth || {}) },
-    slowdown: { ...cfg.RATE_LIMIT.slowdown, ...(rateLimit.slowdown || {}) },
+    global:  { ...cfg.RATE_LIMIT.global,  ...(rateLimit.global  || {}) },
+    auth:    { ...cfg.RATE_LIMIT.auth,    ...(rateLimit.auth    || {}) },
+    slowdown:{ ...cfg.RATE_LIMIT.slowdown, ...(rateLimit.slowdown || {}) },
   };
   const limiters = createRateLimiters(cfg.RATE_LIMIT);
 
-  // Merge user overrides for CSRF
   cfg.CSRF = { ...cfg.CSRF, ...(csrf || {}) };
   const csrfKit = createCsrf(cfg.CSRF);
 
-  // 2) Connect MongoDB
   await mongoose
     .connect(cfg.MONGO_URI)
     .then(() => console.log("MongoDB connected"))
-    .catch((err) => {
-      console.error("MongoDB connection failed:", err);
-      process.exit(1);
-    });
+    .catch((err) => { console.error("MongoDB connection failed:", err); process.exit(1); });
 
-  // 3) Passport init
-  initPassport(cfg.GOOGLE_CLIENT_ID, cfg.GOOGLE_CLIENT_SECRET, cfg.GOOGLE_CALLBACK_URL);
+  // Initialize Passport with providers + transformUser hook
+  initPassport({
+    google: {
+      clientID: cfg.GOOGLE_CLIENT_ID,
+      clientSecret: cfg.GOOGLE_CLIENT_SECRET,
+      callbackURL: cfg.GOOGLE_CALLBACK_URL,
+    },
 
-  // 4) CORS (allow CSRF header from client)
+    transformUser,
+  });
+
+  // CORS (allow CSRF header)
   const extraHeaders = cfg.CORS_OPTIONS.allowedHeaders.includes(cfg.CSRF.headerName)
     ? cfg.CORS_OPTIONS.allowedHeaders
     : [...cfg.CORS_OPTIONS.allowedHeaders, cfg.CSRF.headerName];
 
-  app.use(
-    cors({
-      origin: cfg.CORS_OPTIONS.origin,
-      methods: cfg.CORS_OPTIONS.methods,
-      allowedHeaders: extraHeaders,
-      credentials: cfg.CORS_OPTIONS.credentials,
-    })
-  );
+  app.use(cors({
+    origin: cfg.CORS_OPTIONS.origin,
+    methods: cfg.CORS_OPTIONS.methods,
+    allowedHeaders: extraHeaders,
+    credentials: cfg.CORS_OPTIONS.credentials,
+  }));
 
-  // 5) Global rate limiter
   app.use(limiters.globalLimiter);
 
-  // 6) Sessions
-  app.use(
-    session({
-      secret: cfg.SESSION_SECRET,
-      resave: false,
-      saveUninitialized: true,
-    })
-  );
+  app.use(session({
+    secret: cfg.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: true,
+  }));
 
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // 7) CSRF (session mode) for /auth routes
   if (csrfKit.enabled) {
-    app.use(
-      "/auth",
-      csrfKit.csrfProtection,
-      csrfKit.sendTokenHeader,
-      createAuthRoutes(cfg.JWT_SECRET, { limiters, csrfHeader: cfg.CSRF.headerName })
-    );
+    app.use("/auth", csrfKit.csrfProtection, csrfKit.sendTokenHeader,
+      createAuthRoutes(cfg.JWT_SECRET, { limiters, csrfHeader: cfg.CSRF.headerName }));
   } else {
-    app.use("/auth", createAuthRoutes(cfg.JWT_SECRET, { limiters, csrfHeader: cfg.CSRF.headerName }));
+    app.use("/auth",
+      createAuthRoutes(cfg.JWT_SECRET, { limiters, csrfHeader: cfg.CSRF.headerName }));
   }
 
-  // 8) Root test
-  app.get("/", (req, res) => res.send("Google Auth Package Running with CORS Support"));
+  app.get("/", (_req, res) => res.send("Google Auth Package Running with CORS Support"));
 
-  // 9) CSRF error handler → 403
-  app.use((err, req, res, next) => {
-    if (err && err.code === "EBADCSRFTOKEN") {
-      return res.status(403).json({ error: "Invalid CSRF token" });
-    }
+  app.use((err, _req, res, next) => {
+    if (err && err.code === "EBADCSRFTOKEN") return res.status(403).json({ error: "Invalid CSRF token" });
     return next(err);
   });
 
-  // 10) Start server
   app.listen(cfg.PORT, () => console.log(`Auth server running at http://localhost:${cfg.PORT}`));
 };
 
