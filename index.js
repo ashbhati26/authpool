@@ -3,9 +3,10 @@ const session = require("express-session");
 const passport = require("passport");
 const mongoose = require("mongoose");
 const cors = require("cors");
+
 const initPassport = require("./src/config/passport");
 const createAuthRoutes = require("./src/routes/auth");
-require("dotenv").config();
+const { resolveConfig } = require("./src/config/env");
 
 let app;
 
@@ -18,38 +19,47 @@ const startAuthServer = async ({
   sessionSecret,
   port = 5000,
   corsOptions = {},
-}) => {
+} = {}) => {
   app = express();
 
-  // MongoDB Connection
+  // 1) Resolve & validate configuration (from args or env)
+  const cfg = resolveConfig({
+    mongoURI,
+    googleClientID,
+    googleClientSecret,
+    googleCallbackURL,
+    jwtSecret,
+    sessionSecret,
+    port,
+    corsOptions,
+  });
+
+  // 2) Connect MongoDB
   await mongoose
-    .connect(mongoURI)
+    .connect(cfg.MONGO_URI)
     .then(() => console.log("MongoDB connected"))
     .catch((err) => {
-      console.error('MongoDB connection failed:', err);
+      console.error("MongoDB connection failed:", err);
       process.exit(1);
     });
 
-  // Passport Initialization
-  initPassport(googleClientID, googleClientSecret, googleCallbackURL);
+  // 3) Passport init
+  initPassport(cfg.GOOGLE_CLIENT_ID, cfg.GOOGLE_CLIENT_SECRET, cfg.GOOGLE_CALLBACK_URL);
 
-  // CORS Setup
+  // 4) CORS
   app.use(
     cors({
-      origin: corsOptions.origin || "*",
-      methods: corsOptions.methods || ["GET", "POST"],
-      allowedHeaders: corsOptions.allowedHeaders || [
-        "Content-Type",
-        "Authorization",
-      ],
-      credentials: corsOptions.credentials ?? true,
+      origin: cfg.CORS_OPTIONS.origin,
+      methods: cfg.CORS_OPTIONS.methods,
+      allowedHeaders: cfg.CORS_OPTIONS.allowedHeaders,
+      credentials: cfg.CORS_OPTIONS.credentials,
     })
   );
 
-  // Express Session
+  // 5) Sessions
   app.use(
     session({
-      secret: sessionSecret,
+      secret: cfg.SESSION_SECRET,
       resave: false,
       saveUninitialized: true,
     })
@@ -58,18 +68,14 @@ const startAuthServer = async ({
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Routes
-  app.use("/auth", createAuthRoutes(jwtSecret));
+  // 6) Routes
+  app.use("/auth", createAuthRoutes(cfg.JWT_SECRET));
 
-  // Root Test
-  app.get("/", (req, res) =>
-    res.send("Google Auth Package Running with CORS Support")
-  );
+  // 7) Root test
+  app.get("/", (req, res) => res.send("Google Auth Package Running with CORS Support"));
 
-  // Start Server
-  app.listen(port, () =>
-    console.log(`Auth server running at http://localhost:${port}`)
-  );
+  // 8) Start server
+  app.listen(cfg.PORT, () => console.log(`Auth server running at http://localhost:${cfg.PORT}`));
 };
 
 module.exports = { startAuthServer };
