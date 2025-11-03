@@ -342,7 +342,7 @@ MIT License © 2025 [Ashish Bhati](https://github.com/ashbhati26)
 ## Author
 
 **Ashish Bhati**
-GitHub: [ashbhati26](https://github.com/ashbhati26)
-NPM: [authpool](https://www.npmjs.com/package/authpool)
-Project Type: Research & Developer Tool
-Keywords: Authentication, OAuth, Passport, JWT, Node.js, MongoDB
+* GitHub: [ashbhati26](https://github.com/ashbhati26)
+* NPM: [authpool](https://www.npmjs.com/package/authpool)
+* Project Type: Research & Developer Tool
+* Keywords: Authentication, OAuth, Passport, JWT, Node.js, MongoDB
