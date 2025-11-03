@@ -1,9 +1,9 @@
-// index.js
 const express = require("express");
 const session = require("express-session");
 const passport = require("passport");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
 
 const initPassport = require("./src/config/passport");
 const createAuthRoutes = require("./src/routes/auth");
@@ -26,7 +26,10 @@ const startAuthServer = async ({
   csrf = {},
 } = {}) => {
   app = express();
+
+  // Body & cookie parsing
   app.use(express.json());
+  app.use(cookieParser());
 
   // 1) Resolve & validate configuration (from args or env)
   const cfg = resolveConfig({
@@ -42,9 +45,9 @@ const startAuthServer = async ({
 
   // Merge user overrides for rateLimit
   cfg.RATE_LIMIT = {
-    global:  { ...cfg.RATE_LIMIT.global,  ...(rateLimit.global  || {}) },
-    auth:    { ...cfg.RATE_LIMIT.auth,    ...(rateLimit.auth    || {}) },
-    slowdown:{ ...cfg.RATE_LIMIT.slowdown, ...(rateLimit.slowdown || {}) },
+    global: { ...cfg.RATE_LIMIT.global, ...(rateLimit.global || {}) },
+    auth: { ...cfg.RATE_LIMIT.auth, ...(rateLimit.auth || {}) },
+    slowdown: { ...cfg.RATE_LIMIT.slowdown, ...(rateLimit.slowdown || {}) },
   };
   const limiters = createRateLimiters(cfg.RATE_LIMIT);
 
@@ -95,7 +98,12 @@ const startAuthServer = async ({
 
   // 7) CSRF (session mode) for /auth routes
   if (csrfKit.enabled) {
-    app.use("/auth", csrfKit.csrfProtection, csrfKit.sendTokenHeader, createAuthRoutes(cfg.JWT_SECRET, { limiters, csrfHeader: cfg.CSRF.headerName }));
+    app.use(
+      "/auth",
+      csrfKit.csrfProtection,
+      csrfKit.sendTokenHeader,
+      createAuthRoutes(cfg.JWT_SECRET, { limiters, csrfHeader: cfg.CSRF.headerName })
+    );
   } else {
     app.use("/auth", createAuthRoutes(cfg.JWT_SECRET, { limiters, csrfHeader: cfg.CSRF.headerName }));
   }
