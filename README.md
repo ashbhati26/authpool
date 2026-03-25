@@ -1,348 +1,284 @@
-# AuthPool — Plug-and-Play Authentication Server
+# AuthPool
 
-> **AuthPool** is a plug-and-play Node.js authentication package that provides a complete, secure, and configurable authentication system with OAuth, JWT tokens, role-based access, CSRF protection, rate limiting, and more — all out of the box.
-
----
-
-## Features
-
-* **Plug & Play Auth Server** — Start a full authentication backend in one line of code.
-* **Google OAuth Integration** — Pre-configured with Google strategy (others coming soon).
-* **JWT-based Authentication** — Secure access and refresh token management.
-* **Session Support** — Express session management for OAuth providers.
-* **Role-Based Access Control (RBAC)** — Secure routes with admin/user roles.
-* **CSRF Protection** — Built-in CSRF tokens for safe cross-origin operations.
-* **Rate Limiting & Slowdown** — Prevent brute-force and DDoS attacks.
-* **MongoDB Integration** — Built-in schema for users and refresh tokens.
-* **Custom User Transformation** — Modify or enrich OAuth user data before saving.
-* **CORS Support** — Easily integrate with any frontend.
-* **Secure Logout & Logout-All Sessions** — For full session lifecycle management.
+A plug-and-play Node.js authentication server. One function call gives you Google OAuth, email/password login, JWT access tokens, rotating refresh tokens, CSRF protection, rate limiting, brute-force lockout, and role-based access control — all production-ready.
 
 ---
 
-## Installation
+## Install
 
 ```bash
 npm install authpool
 ```
 
-or
-
-```bash
-yarn add authpool
-```
-
 ---
 
-## Basic Setup Example
-
-Create a new file, for example `server.js`:
+## Quickstart
 
 ```js
 const { startAuthServer } = require("authpool");
 
 startAuthServer({
-  mongoURI: "mongodb://localhost:27017/authpool",
-  googleClientID: "YOUR_GOOGLE_CLIENT_ID",
-  googleClientSecret: "YOUR_GOOGLE_CLIENT_SECRET",
-  googleCallbackURL: "http://localhost:5000/auth/google/callback",
-  jwtSecret: "YOUR_JWT_SECRET",
-  sessionSecret: "YOUR_SESSION_SECRET",
-  port: 5000,
-  corsOptions: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
+  mongoURI:      process.env.MONGO_URI,
+  jwtSecret:     process.env.JWT_SECRET,
+  sessionSecret: process.env.SESSION_SECRET,
 });
 ```
 
-Then run:
-
-```bash
-node server.js
-```
-
-Output:
-
-```
-MongoDB connected
-Auth server running at http://localhost:5000
-```
+The server starts at `http://localhost:5000`. All auth routes are live immediately.
 
 ---
 
-## Available Routes
+## Environment Variables
 
-| Method | Route                   | Description                     |
-| ------ | ----------------------- | ------------------------------- |
-| `GET`  | `/auth/google`          | Start Google OAuth login        |
-| `GET`  | `/auth/google/callback` | OAuth callback handler          |
-| `GET`  | `/auth/protected`       | Protected route (JWT required)  |
-| `GET`  | `/auth/admin`           | Admin-only route (RBAC example) |
-| `POST` | `/auth/refresh`         | Refresh access token            |
-| `GET`  | `/auth/logout`          | Logout current session          |
-| `POST` | `/auth/logout-all`      | Logout from all sessions        |
-| `GET`  | `/auth/csrf`            | Get CSRF token for frontend     |
+Create a `.env` file in your project root. AuthPool loads it automatically — you don't need to call `require('dotenv')` yourself.
 
----
+| Variable               | Required | Description                                      |
+|------------------------|----------|--------------------------------------------------|
+| `MONGO_URI`            | ✅       | MongoDB connection string                        |
+| `JWT_SECRET`           | ✅       | JWT signing secret (32+ random characters)       |
+| `SESSION_SECRET`       | ✅       | Session cookie secret (different from JWT)       |
+| `GOOGLE_CLIENT_ID`     | OAuth    | Google OAuth client ID                           |
+| `GOOGLE_CLIENT_SECRET` | OAuth    | Google OAuth client secret                       |
+| `GOOGLE_CALLBACK_URL`  | OAuth    | e.g. `http://localhost:5000/auth/google/callback`|
+| `PORT`                 | —        | Listening port (default: `5000`)                 |
+| `CSRF_SECRET`          | —        | Separate CSRF secret (defaults to SESSION_SECRET)|
+| `REDIS_URL`            | —        | Redis connection URL                             |
 
-## Example: Custom User Transformation
-
-You can customize user data before it’s stored in MongoDB:
-
-```js
-startAuthServer({
-  // ... other configs
-  transformUser: (profile, provider) => {
-    if (provider === "google") {
-      return {
-        googleId: profile.id,
-        email: profile.emails[0].value,
-        name: profile.displayName,
-        profilePic: profile.photos[0].value,
-        roles: ["user"],
-      };
-    }
-  },
-});
-```
+Missing required variables cause a clean startup error that lists exactly what's missing.
 
 ---
 
-## Token Management
+## API Routes
 
-AuthPool issues two types of tokens after successful login:
+### Health
 
-| Token             | Description                                                       | Expiry     |
-| ----------------- | ----------------------------------------------------------------- | ---------- |
-| **Access Token**  | Short-lived (used for API requests)                               | 15 minutes |
-| **Refresh Token** | Stored as an HTTP-only cookie, used to generate new access tokens | 30 days    |
+| Method | Path  | Description             |
+|--------|-------|-------------------------|
+| GET    | `/`   | Returns `{ status: "ok" }` |
 
-To refresh a token:
+### Auth
 
-```bash
-POST /auth/refresh
-Body: { "refreshToken": "..." }
-```
+| Method | Path                    | Auth required | Description                                      |
+|--------|-------------------------|---------------|--------------------------------------------------|
+| GET    | `/auth/csrf`            | —             | Returns a CSRF token (also sent in response header) |
+| POST   | `/auth/register`        | —             | Create account with `{ email, password, name }`  |
+| POST   | `/auth/login`           | —             | Login with `{ email, password }`                 |
+| GET    | `/auth/google`          | —             | Redirect to Google OAuth consent screen          |
+| GET    | `/auth/google/callback` | —             | OAuth callback — handled automatically           |
+| GET    | `/auth/protected`       | Bearer JWT    | Test route — returns decoded token payload       |
+| GET    | `/auth/me`              | Bearer JWT    | Returns full user record from MongoDB            |
+| GET    | `/auth/admin`           | Bearer JWT + `admin` role | Admin-only test route             |
+| POST   | `/auth/refresh`         | Cookie        | Rotate refresh token, get new access token       |
+| GET    | `/auth/logout`          | —             | Revoke refresh token and clear cookie            |
+| POST   | `/auth/logout-all`      | Bearer JWT    | Invalidate all tokens across all devices         |
 
-To logout all devices (invalidate all tokens):
-
-```bash
-POST /auth/logout-all
-Authorization: Bearer <access_token>
-```
-
----
-
-## Role-Based Access Control (RBAC)
-
-You can restrict routes to specific roles (like `admin`, `user`, etc.):
-
-```js
-router.get("/admin", verifyJWT(JWT_SECRET), authorizeRoles(["admin"]), (req, res) => {
-  res.json({ message: "Welcome, admin!" });
-});
-```
-
-* Each user has a `roles` array stored in the database.
-* The middleware checks if the logged-in user has the required role.
-
----
-
-## Security Layers
-
-| Feature                    | Purpose                                               |
-| -------------------------- | ----------------------------------------------------- |
-| **CSRF Protection**        | Prevents cross-site request forgery attacks           |
-| **Rate Limiting**          | Blocks repeated failed attempts                       |
-| **Slowdown Middleware**    | Adds artificial delay after multiple failed requests  |
-| **Brute-Force Lockout**    | Temporarily locks users after repeated login failures |
-| **JWT Verification**       | Ensures tokens are valid and untampered               |
-| **Role Authorization**     | Restricts sensitive routes                            |
-| **Refresh Token Rotation** | Prevents token replay attacks                         |
-
----
-
-## Environment Variables (.env)
-
-You can use a `.env` file or pass variables directly in code.
-
-```
-MONGO_URI=mongodb://localhost:27017/authpool
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
-GOOGLE_CALLBACK_URL=http://localhost:5000/auth/google/callback
-JWT_SECRET=your_jwt_secret
-SESSION_SECRET=your_session_secret
-PORT=5000
-```
-
----
-
-## Advanced Configuration
-
-### CORS Options
-
-```js
-corsOptions: {
-  origin: "http://localhost:3000",
-  methods: ["GET", "POST"],
-  credentials: true,
-}
-```
-
-### Rate Limiting
-
-```js
-rateLimit: {
-  global: { windowMs: 15 * 60 * 1000, max: 300 },
-  auth: { windowMs: 60 * 1000, max: 5 },
-  slowdown: { windowMs: 60 * 1000, delayAfter: 3, delayMs: 250 },
-}
-```
-
-### CSRF Protection
-
-```js
-csrf: {
-  enabled: true,
-  headerName: "x-csrf-token"
-}
-```
-
----
-
-## MongoDB Models
-
-### User Model
-
-```js
-{
-  googleId: String,
-  name: String,
-  email: String,
-  profilePic: String,
-  roles: ["user"],
-  tokenVersion: Number,
-}
-```
-
-### Refresh Token Model
-
-```js
-{
-  jti: String,
-  userId: ObjectId,
-  hashedToken: String,
-  expiresAt: Date,
-  revokedAt: Date,
-}
-```
-
----
-
-## Example Integration (Frontend)
-
-You can easily use AuthPool with React, Next.js, or any frontend.
-
-Example with **Next.js**:
-
-```js
-fetch("http://localhost:5000/auth/google", {
-  credentials: "include"
-});
-```
-
-Then, after login:
-
-* The backend sends access and refresh tokens.
-* The access token is stored in memory or secure storage.
-* Use `/auth/refresh` for silent renewal.
-
----
-
-## Example Protected API Usage
-
-```js
-fetch("http://localhost:5000/auth/protected", {
-  headers: {
-    Authorization: `Bearer ${accessToken}`,
-  },
-});
-```
-
-Response:
+### Register & Login responses
 
 ```json
-{
-  "message": "Token is valid",
-  "user": {
-    "id": "66c7f3d...",
-    "name": "John Doe",
-    "roles": ["user"]
-  }
+{ "accessToken": "<jwt>", "roles": ["user"] }
+```
+
+A `refreshToken` httpOnly cookie is also set automatically.
+
+---
+
+## Full Configuration
+
+```js
+const { startAuthServer } = require("authpool");
+
+const { app, server } = await startAuthServer({
+  // Required (or set via .env)
+  mongoURI:      "mongodb://localhost:27017/myapp",
+  jwtSecret:     "super-secret-32-char-minimum",
+  sessionSecret: "another-secret-32-char-minimum",
+
+  // Google OAuth (optional)
+  googleClientID:     "...",
+  googleClientSecret: "...",
+  googleCallbackURL:  "http://localhost:5000/auth/google/callback",
+
+  // Server
+  port: 5000,
+
+  // CORS
+  corsOptions: {
+    origin:      "http://localhost:3000",
+    methods:     ["GET", "POST"],
+    credentials: true,
+  },
+
+  // Rate limiting (these are the defaults — only override what you need)
+  rateLimit: {
+    global:   { windowMs: 15 * 60 * 1000, max: 300 },
+    auth:     { windowMs: 60 * 1000,       max: 30  },
+    slowdown: { windowMs: 60 * 1000, delayAfter: 3, delayMs: 300 },
+  },
+
+  // CSRF (enabled by default)
+  csrf: {
+    enabled:    true,
+    headerName: "x-csrf-token",  // send this header on every mutating request
+    cookieName: "authpool.csrf",
+    secret:     "optional-separate-csrf-secret",
+  },
+
+  // Redis (optional but recommended for production)
+  redis: {
+    url: "redis://localhost:6379",
+    // host: "localhost", port: 6379   ← alternative
+    // enabled: false                  ← force in-memory
+  },
+
+  // Transform an OAuth profile before the DB upsert (optional)
+  transformUser: (profile, provider) => ({
+    googleId:   profile.id,
+    email:      profile.emails?.[0]?.value,
+    name:       profile.displayName,
+    profilePic: profile.photos?.[0]?.value,
+    roles:      ["user"],
+    // add any custom fields here
+  }),
+
+  // Add your own routes after AuthPool finishes startup
+  onReady: (app, server) => {
+    app.get("/api/hello", (req, res) => res.json({ message: "custom route" }));
+  },
+});
+```
+
+---
+
+## Frontend Usage
+
+### 1 — Register
+
+```js
+const res = await fetch("http://localhost:5000/auth/register", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken },
+  credentials: "include",   // sends the cookie
+  body: JSON.stringify({ email, password, name }),
+});
+const { accessToken } = await res.json();
+```
+
+### 2 — Attach the token to requests
+
+```js
+fetch("/api/protected-resource", {
+  headers: { Authorization: `Bearer ${accessToken}` },
+  credentials: "include",
+});
+```
+
+### 3 — Refresh silently when the token expires
+
+```js
+async function refresh() {
+  const res = await fetch("http://localhost:5000/auth/refresh", {
+    method: "POST",
+    credentials: "include",   // the cookie is sent automatically
+  });
+  const { accessToken } = await res.json();
+  return accessToken;
 }
 ```
 
----
+### 4 — CSRF token
 
-## Architecture Overview
+Fetch once and reuse. A fresh token is also returned in the `x-csrf-token` header of every GET response.
 
+```js
+const res = await fetch("http://localhost:5000/auth/csrf", { credentials: "include" });
+const { csrfToken } = await res.json();
+// Include as x-csrf-token header on every POST / PATCH / DELETE
 ```
-                ┌──────────────────────┐
-                │    Frontend App      │
-                │ (React / Next.js)    │
-                └─────────┬────────────┘
-                          │
-             OAuth        │
-         (Google, GitHub) │
-                          ▼
-                ┌──────────────────────┐
-                │     AuthPool Server  │
-                │  Express + Passport  │
-                ├──────────────────────┤
-                │  Rate Limiting       │
-                │  CSRF Protection     │
-                │  JWT / Refresh Flow  │
-                │  MongoDB (User + RT) │
-                └──────────────────────┘
-                          │
-                    Secure API Calls
-                          │
-                          ▼
-                ┌──────────────────────┐
-                │   Your Application   │
-                └──────────────────────┘
-```
-
-## Upcoming Features
-
-| Feature                                 | Status  | Description                                           |
-| --------------------------------------- | ------- | ----------------------------------------------------- |
-| Multi-Provider OAuth (GitHub, Facebook) | 🚧 Open | Add support for more providers                        |
-| TypeScript Support                      | 🚧 Open | Rewrite in TypeScript for better typings              |
-| Multi-Database Support                  | 🚧 Open | Add support for different DBs (Postgres, MySQL, etc.) |
 
 ---
 
-## Contributing
+## Adding Protected Routes
 
-Contributions are welcome!
-If you’d like to improve or add providers, open a PR or issue.
+Use the `onReady` hook to access the Express app and add routes after startup:
+
+```js
+const verifyJWT       = require("authpool/src/middleware/verifyJWT");
+const { authorizeRoles } = require("authpool/src/middleware/authorizeRoles");
+
+startAuthServer({
+  // ...config...
+  onReady: (app) => {
+    const JWT_SECRET = process.env.JWT_SECRET;
+
+    // Any authenticated user
+    app.get("/api/profile", verifyJWT(JWT_SECRET), (req, res) => {
+      res.json({ user: req.user });
+    });
+
+    // Admin only
+    app.get("/api/admin", verifyJWT(JWT_SECRET), authorizeRoles(["admin"]), (req, res) => {
+      res.json({ message: "admin area" });
+    });
+  },
+});
+```
+
+---
+
+## Security Summary
+
+| Feature               | Default                                      |
+|-----------------------|----------------------------------------------|
+| Password hashing      | bcrypt, 12 salt rounds                       |
+| Access token expiry   | 15 minutes                                   |
+| Refresh token expiry  | 30 days, rotated on every use                |
+| Refresh token storage | SHA-256 hashed in MongoDB, httpOnly cookie   |
+| CSRF protection       | Double-submit cookie (csrf-csrf)             |
+| Brute-force lockout   | 5 failures → 15-minute IP lockout            |
+| Rate limiting         | Global 300/15 min, credential 30/min         |
+| HTTP headers          | helmet defaults                              |
+| Session storage       | MongoDB (connect-mongo), not MemoryStore     |
+
+---
+
+## Redis
+
+Redis is optional. Without it everything works using in-process memory (single server only). With it, rate limiters, brute-force counters, and the JWT user cache scale across multiple instances and survive restarts.
+
+```bash
+# Local Redis via Docker
+docker run -d -p 6379:6379 redis:7
+```
+
+```
+REDIS_URL=redis://localhost:6379
+```
+
+Pass `redis: { enabled: false }` to force in-memory mode even when `REDIS_URL` is set (useful in tests).
+
+---
+
+## TypeScript
+
+Types are included at `authpool/types/index.d.ts`. Import `AuthPoolOptions` for full autocomplete:
+
+```ts
+import { startAuthServer, AuthPoolOptions } from "authpool";
+
+const options: AuthPoolOptions = { /* ... */ };
+await startAuthServer(options);
+```
+
+---
+
+## Requirements
+
+- Node.js 18+
+- MongoDB 5+ (local or Atlas)
+- Redis (optional, recommended for production)
 
 ---
 
 ## License
 
-MIT License © 2025 [Ashish Bhati](https://github.com/ashbhati26)
-
----
-
-## Author
-
-**Ashish Bhati**
-* GitHub: [ashbhati26](https://github.com/ashbhati26)
-* NPM: [authpool](https://www.npmjs.com/package/authpool)
-* Project Type: Research & Developer Tool
-* Keywords: Authentication, OAuth, Passport, JWT, Node.js, MongoDB
+MIT

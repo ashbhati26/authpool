@@ -1,32 +1,38 @@
 {
   "name": "authpool",
-  "version": "1.5.1",
+  "version": "2.0.0",
+  "description": "Plug-and-play Node.js authentication server with OAuth, JWT, RBAC, CSRF, rate limiting and more.",
   "main": "index.js",
+  "types": "types/index.d.ts",
   "type": "commonjs",
   "scripts": {
-    "test": "node tests/test.js"
+    "test": "node tests/test.js",
+    "start": "node tests/server.js",
+    "dev": "nodemon tests/server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["authentication", "oauth", "passport", "jwt", "nodejs", "mongodb", "rbac", "csrf"],
+  "author": "Ashish Bhati",
+  "license": "MIT",
   "dependencies": {
-    "authpool": "file:",
+    "bcryptjs": "^2.4.3",
+    "connect-mongo": "^5.1.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
-    "csurf": "^1.11.0",
+    "csrf-csrf": "^3.2.0",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "express-rate-limit": "^8.2.1",
     "express-session": "^1.18.1",
     "express-slow-down": "^3.0.0",
-    "google-auth": "file:",
+    "helmet": "^8.0.0",
+    "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.14.0",
     "passport": "^0.7.0",
-    "passport-google-oauth20": "^2.0.0"
+    "passport-google-oauth20": "^2.0.0",
+    "passport-local": "^1.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"
-  },
-  "description": ""
+  }
 }

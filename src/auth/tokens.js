@@ -1,4 +1,4 @@
-const jwt = require("jsonwebtoken");
+const jwt    = require("jsonwebtoken");
 const crypto = require("crypto");
 const RefreshToken = require("../models/RefreshToken");
 
@@ -11,12 +11,11 @@ function signRefresh(payload, secret, jti) {
 }
 
 async function persistRefresh(userId, token, jti, expSeconds) {
-  const hashed = hashToken(token);
   await RefreshToken.create({
     jti,
     userId,
-    hashedToken: hashed,
-    expiresAt: new Date(expSeconds * 1000),
+    hashedToken: hashToken(token),
+    expiresAt:   new Date(expSeconds * 1000),
   });
 }
 
@@ -39,7 +38,7 @@ async function isRefreshValid(token, jti) {
 
 function decodeExp(token) {
   const decoded = jwt.decode(token);
-  return decoded && decoded.exp ? decoded.exp : null;
+  return decoded?.exp ?? null;
 }
 
 function hashToken(token) {
@@ -51,12 +50,7 @@ function newJti() {
 }
 
 module.exports = {
-  signAccess,
-  signRefresh,
-  persistRefresh,
-  revokeRefresh,
-  revokeAllForUser,
-  isRefreshValid,
-  decodeExp,
-  newJti,
+  signAccess, signRefresh, persistRefresh,
+  revokeRefresh, revokeAllForUser, isRefreshValid,
+  decodeExp, newJti,
 };
