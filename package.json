@@ -1,6 +1,6 @@
 {
   "name": "authpool",
-  "version": "2.0.1",
+  "version": "3.0.0",
   "description": "Plug-and-play Node.js authentication server with OAuth, JWT, RBAC, CSRF, rate limiting and more.",
   "main": "index.js",
   "types": "types/index.d.ts",
