@@ -1,6 +1,6 @@
 {
   "name": "authpool",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Plug-and-play Node.js authentication server with OAuth, JWT, RBAC, CSRF, rate limiting and more.",
   "main": "index.js",
   "types": "types/index.d.ts",
@@ -10,7 +10,16 @@
     "start": "node tests/server.js",
     "dev": "nodemon tests/server.js"
   },
-  "keywords": ["authentication", "oauth", "passport", "jwt", "nodejs", "mongodb", "rbac", "csrf"],
+  "keywords": [
+    "authentication",
+    "oauth",
+    "passport",
+    "jwt",
+    "nodejs",
+    "mongodb",
+    "rbac",
+    "csrf"
+  ],
   "author": "Ashish Bhati",
   "license": "MIT",
   "dependencies": {
